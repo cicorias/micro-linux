@@ -26,10 +26,10 @@ Non-goals (for now): desktop environments, full server profiles, or platform-spe
   - qemu-system-x86 (for local testing)
   - xorriso, mtools, grub-pc-bin, grub-efi-amd64-bin (ISO/EFI boot assembly)
   - squashfs-tools, e2fsprogs (filesystem images)
-  - cloud-init, curtin, subiquity (for autoinstall support)
+  - cloud-init (for schema validation; installer ISO provides curtin/subiquity during install)
   - openssh-server (included in the installed system for remote access)
 
-Note: Exact package set may vary depending on your final image layout (e.g., BIOS-only vs. UEFI, ISO/hybrid image vs. raw disk image).
+Note: Exact package set may vary depending on your final image layout (e.g., BIOS-only vs. UEFI, ISO/hybrid image vs. raw disk image). The setup script enables the Ubuntu 'universe' repository as needed.
 
 ## Approach (high level)
 
@@ -136,9 +136,10 @@ qemu-system-x86_64 -enable-kvm -cpu host -m 1024 \
 
 ## Building artifacts
 
-Run the scripts in order (root required for image steps). For the installer ISO remaster, provide the official Ubuntu 24.04 installer ISO via SOURCE_ISO:
+Run the scripts in order (root required for image steps). Start with the build host setup to install required packages and UEFI support. For the installer ISO remaster, provide the official Ubuntu 24.04 installer ISO via SOURCE_ISO:
 
 ```
+sudo ./scripts/00-setup-build-host.sh
 sudo ./scripts/01-rootfs.sh
 sudo NET_MODE=dhcp ./scripts/02-seed.sh   # or NET_MODE=static IFACE=eth0 ADDR=192.168.1.10 PREFIX=24 GATEWAY=192.168.1.1 ./scripts/02-seed.sh
 sudo SOURCE_ISO=/path/to/ubuntu-24.04-live-server-amd64.iso ./scripts/03-image.sh
