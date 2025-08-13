@@ -26,6 +26,9 @@ UEFI_ARGS=()
 ART_DIR="artifacts"
 mkdir -p "$ART_DIR"
 
+# NAT networking with SSH port-forward (host:2222 -> guest:22)
+NIC_ARGS=( -nic user,model=virtio-net-pci,hostfwd=tcp::2222-:22 )
+
 # Decide acceleration and CPU mode (KVM vs TCG) and handle sudo if needed
 ACCEL=()
 CPU_ARG="host"
@@ -105,6 +108,7 @@ if [[ "$TEST_ISO" = "1" ]]; then
     # Use explicit device wiring with bootindex to guide UEFI
     qemu-system-x86_64 "${ACCEL[@]}" -cpu "${CPU_ARG}" -m 1024 -machine q35 \
       "${UEFI_ARGS[@]}" \
+    "${NIC_ARGS[@]}" \
       -drive if=none,media=cdrom,id=cd1,file="$ISO" \
       -device ide-cd,drive=cd1,bootindex=1 \
       -drive if=none,id=hd0,file="$INSTALL_TARGET",format=qcow2,discard=unmap \
@@ -121,6 +125,7 @@ if [[ -f "$QCOW2" ]]; then
   echo "Launching QEMU booting qcow2 directly ($QCOW2)"
   qemu-system-x86_64 "${ACCEL[@]}" -cpu "${CPU_ARG}" -m 1024 -machine q35 \
     "${UEFI_ARGS[@]}" \
+  "${NIC_ARGS[@]}" \
   -drive if=none,id=hd0,file="$QCOW2",format=qcow2,discard=unmap \
   -device nvme,serial=deadbeef,drive=hd0,bootindex=1 \
     -serial mon:stdio -display none -name micro-linux-qcow2 || true

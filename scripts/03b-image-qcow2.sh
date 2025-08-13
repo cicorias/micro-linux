@@ -69,6 +69,52 @@ mount "$ESP_PART" "$MNT/boot/efi"
 echo "Installing rootfs into rootA"
 rsync -aHAX artifacts/rootfs/ "$MNT/"
 
+echo "Configuring serial console and default user"
+# Force console logs to serial for headless testing
+cat > "$MNT/etc/default/grub" <<'EOF'
+GRUB_DEFAULT=rootA
+GRUB_TIMEOUT=5
+GRUB_DISTRIBUTOR=`lsb_release -i -s 2>/dev/null || echo Debian`
+GRUB_CMDLINE_LINUX="console=ttyS0,115200 console=tty0 rootdelay=3"
+GRUB_TERMINAL="serial console"
+GRUB_SERIAL_COMMAND="serial --speed=115200 --unit=0 --word=8 --parity=no --stop=1"
+EOF
+
+# Create a default user 'ubuntu' with a password (use artifacts/password.txt if present)
+PW_FILE="artifacts/password.txt"
+if [[ -f "$PW_FILE" ]]; then
+  PW=$(cat "$PW_FILE")
+else
+  PW=$(openssl rand -base64 18)
+  echo "$PW" > "$PW_FILE"
+  chmod 600 "$PW_FILE"
+fi
+HASH=$(mkpasswd -m sha-512 "$PW" 2>/dev/null || openssl passwd -6 "$PW")
+chroot "$MNT" bash -lc 'id -u ubuntu >/dev/null 2>&1 || useradd -m -s /bin/bash -G sudo ubuntu'
+echo "ubuntu:$HASH" | chroot "$MNT" chpasswd -e
+
+echo "Writing a simple DHCP netplan"
+mkdir -p "$MNT/etc/netplan"
+cat > "$MNT/etc/netplan/01-netcfg.yaml" <<'YAML'
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    all:
+      match:
+        name: "*"
+      dhcp4: true
+      optional: true
+YAML
+
+# Ensure DNS works inside chroot for apt operations
+cat > "$MNT/etc/resolv.conf" <<'EOF'
+nameserver 1.1.1.1
+nameserver 8.8.8.8
+EOF
+
+# (initramfs driver injection happens after initramfs-tools is installed)
+
 echo "Configuring fstab"
 cat > "$MNT/etc/fstab" <<EOF
 # /etc/fstab
@@ -81,9 +127,9 @@ echo "Installing GRUB (UEFI only)"
 mount --bind /dev "$MNT/dev"
 mount --bind /proc "$MNT/proc"
 mount --bind /sys "$MNT/sys"
+mount --bind /dev/pts "$MNT/dev/pts" || true
 
-# Ensure networking for apt inside chroot
-cp -L /etc/resolv.conf "$MNT/etc/resolv.conf" || true
+# Ensure networking for apt inside chroot (resolv.conf already written)
 
 # Install minimal GRUB for UEFI in the target
 chroot "$MNT" bash -c 'export DEBIAN_FRONTEND=noninteractive; apt-get update'
@@ -97,11 +143,38 @@ echo "Finalizing GRUB configuration"
 chroot "$MNT" grub-editenv /boot/grub/grubenv create || true
 # Ensure initramfs and grub.cfg are present
 chroot "$MNT" bash -c 'export DEBIAN_FRONTEND=noninteractive; apt-get install -y --no-install-recommends initramfs-tools || true'
-chroot "$MNT" bash -c 'update-initramfs -u -k all || true'
+mkdir -p "$MNT/etc/initramfs-tools" && cat > "$MNT/etc/initramfs-tools/modules" <<'EOF'
+nvme
+virtio
+virtio_pci
+virtio_blk
+virtio_scsi
+EOF
+# Provide A/B menu entries that use labels so device names (nvme/vda/sda) don’t matter
+cat > "$MNT/etc/grub.d/06_abroot" <<'GRUBD'
+#!/bin/sh
+set -e
+cat <<'EOF'
+menuentry 'Ubuntu (rootA)' --id rootA {
+  search --no-floppy --set=root --label rootA
+  linux /boot/vmlinuz root=LABEL=rootA ro console=ttyS0,115200 console=tty0 rootdelay=3
+  initrd /boot/initrd.img
+}
+menuentry 'Ubuntu (rootB)' --id rootB {
+  search --no-floppy --set=root --label rootB
+  linux /boot/vmlinuz root=LABEL=rootB ro console=ttyS0,115200 console=tty0 rootdelay=3
+  initrd /boot/initrd.img
+}
+EOF
+GRUBD
+chmod +x "$MNT/etc/grub.d/06_abroot"
+KVER=$(chroot "$MNT" bash -lc 'ls -1 /lib/modules | head -n1')
+chroot "$MNT" bash -c "update-initramfs -c -k ${KVER} || true"
 chroot "$MNT" update-grub || true
 
 echo "Enable SSH and boot-success service if present"
 chroot "$MNT" systemctl enable ssh || true
+chroot "$MNT" systemctl enable systemd-networkd systemd-resolved serial-getty@ttyS0.service || true
 if [[ -f autoinstall/boot-success.service ]]; then
   install -D -m 0644 autoinstall/boot-success.service "$MNT/etc/systemd/system/boot-success.service"
   chroot "$MNT" systemctl enable boot-success.service || true
@@ -109,6 +182,7 @@ fi
 
 echo "Cleanup mounts"
 umount -R "$MNT/boot/efi" || true
+umount -R "$MNT/dev/pts" || true
 umount -R "$MNT/dev" || true
 umount -R "$MNT/proc" || true
 umount -R "$MNT/sys" || true
