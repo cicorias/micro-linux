@@ -17,17 +17,37 @@ SIZE_GB=${SIZE_GB:-8}
 echo "Creating qcow2 $IMG_OUT (${SIZE_GB}G)"
 qemu-img create -f qcow2 "$IMG_OUT" ${SIZE_GB}G
 
-TMPNBD="/dev/nbd0"
-modprobe nbd max_part=16
+pick_nbd() {
+  modprobe nbd max_part=16 || true
+  for i in {0..15}; do
+    local dev="/dev/nbd${i}"
+    [[ -e "$dev" ]] || continue
+    # If pid file exists and is non-empty, it's in use
+    local pidf="/sys/class/block/nbd${i}/pid"
+    if [[ ! -s "$pidf" ]]; then
+      echo "$dev"
+      return 0
+    fi
+  done
+  return 1
+}
+
+TMPNBD=$(pick_nbd) || { echo "No free /dev/nbdX devices." >&2; exit 1; }
+# Best-effort disconnect in case it's half-open
+qemu-nbd --disconnect "$TMPNBD" >/dev/null 2>&1 || true
 qemu-nbd --connect="$TMPNBD" "$IMG_OUT"
 trap 'qemu-nbd --disconnect "$TMPNBD" || true' EXIT
+# Wait a moment for the device to be ready
+udevadm settle || sleep 0.5
 
-echo "Partitioning (GPT: ESP/rootA/rootB/data)"
+echo "Partitioning (GPT: ESP/rootA/rootB/data) on $TMPNBD"
 parted -s "$TMPNBD" mklabel gpt \
   mkpart ESP fat32 1MiB 513MiB set 1 esp on \
   mkpart rootA ext4 513MiB 4097MiB \
   mkpart rootB ext4 4097MiB 7681MiB \
   mkpart data ext4 7681MiB 100%
+partprobe "$TMPNBD" || true
+udevadm settle || sleep 0.5
 
 ESP_PART=${TMPNBD}p1
 ROOTA_PART=${TMPNBD}p2
@@ -61,26 +81,23 @@ echo "Installing GRUB (UEFI only)"
 mount --bind /dev "$MNT/dev"
 mount --bind /proc "$MNT/proc"
 mount --bind /sys "$MNT/sys"
+
+# Ensure networking for apt inside chroot
+cp -L /etc/resolv.conf "$MNT/etc/resolv.conf" || true
+
+# Install minimal GRUB for UEFI in the target
+chroot "$MNT" bash -c 'export DEBIAN_FRONTEND=noninteractive; apt-get update'
+chroot "$MNT" bash -c 'export DEBIAN_FRONTEND=noninteractive; apt-get install -y --no-install-recommends grub-efi-amd64 grub-efi-amd64-bin grub-common grub2-common shim-signed'
+
+# Install GRUB to the ESP and add a removable-media fallback
 chroot "$MNT" bash -c "grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=ubuntu --recheck"
+chroot "$MNT" bash -c 'mkdir -p /boot/efi/EFI/BOOT; if [ -f /boot/efi/EFI/ubuntu/shimx64.efi ]; then cp -f /boot/efi/EFI/ubuntu/shimx64.efi /boot/efi/EFI/BOOT/BOOTX64.EFI; elif [ -f /boot/efi/EFI/ubuntu/grubx64.efi ]; then cp -f /boot/efi/EFI/ubuntu/grubx64.efi /boot/efi/EFI/BOOT/BOOTX64.EFI; fi'
 
-echo "GRUB configuration and boot entries"
-cat > "$MNT/etc/grub.d/40_custom" <<'GRUBEOF'
-set default="0"
-set timeout=5
-if [ -s /boot/grub/grubenv ]; then
-  load_env
-fi
-menuentry "Ubuntu (rootA)" {
-  linux /boot/vmlinuz root=LABEL=rootA ro
-  initrd /boot/initrd.img
-}
-menuentry "Ubuntu (rootB)" {
-  linux /boot/vmlinuz root=LABEL=rootB ro
-  initrd /boot/initrd.img
-}
-GRUBEOF
-
+echo "Finalizing GRUB configuration"
 chroot "$MNT" grub-editenv /boot/grub/grubenv create || true
+# Ensure initramfs and grub.cfg are present
+chroot "$MNT" bash -c 'export DEBIAN_FRONTEND=noninteractive; apt-get install -y --no-install-recommends initramfs-tools || true'
+chroot "$MNT" bash -c 'update-initramfs -u -k all || true'
 chroot "$MNT" update-grub || true
 
 echo "Enable SSH and boot-success service if present"
