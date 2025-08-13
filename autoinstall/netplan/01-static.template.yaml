@@ -1,0 +1,13 @@
+# Netplan static example (template)
+# Replace ${IFACE}, ${ADDR}, ${PREFIX}, ${GATEWAY}, and add nameservers as needed
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    ${IFACE}:
+      addresses: [${ADDR}/${PREFIX}]
+      routes:
+        - to: 0.0.0.0/0
+          via: ${GATEWAY}
+      nameservers:
+        addresses: [1.1.1.1,8.8.8.8]

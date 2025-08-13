@@ -1,0 +1,10 @@
+# Netplan DHCP example (default)
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    all:
+      match:
+        name: "*"
+      dhcp4: true
+      dhcp6: false

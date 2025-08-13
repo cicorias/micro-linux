@@ -1,0 +1,12 @@
+[Unit]
+Description=Mark GRUB boot as successful
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/grub-editenv /boot/grub/grubenv set boot_success=1
+RemainAfterExit=no
+
+[Install]
+WantedBy=multi-user.target
