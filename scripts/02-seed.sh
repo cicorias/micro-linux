@@ -118,31 +118,15 @@ autoinstall:
         path: /
         device: fs_rootA
   late-commands:
-    - curtin in-target --target=/target -- bash -c 'grub-install --recheck'
-    - curtin in-target --target=/target -- bash -c 'grub-mkconfig -o /boot/grub/grub.cfg'
-    - curtin in-target --target=/target -- bash -c 'grub-editenv /boot/grub/grubenv create || true'
-  - curtin in-target --target=/target -- mkdir -p /etc/systemd/system
-  - curtin in-target --target=/target -- bash -c 'cat >/etc/systemd/system/boot-success.service <<SERV\n$(sed -e 's/\\/\\\\/g' autoinstall/boot-success.service)\nSERV'
+  - curtin in-target --target=/target -- grub-install --recheck || true
+  - curtin in-target --target=/target -- grub-mkconfig -o /boot/grub/grub.cfg || true
+  - curtin in-target --target=/target -- grub-editenv /boot/grub/grubenv create || true
+  - mkdir -p /target/etc/systemd/system
+  - cp /cdrom/autoinstall/boot-success.service /target/etc/systemd/system/boot-success.service
   - curtin in-target --target=/target -- systemctl enable boot-success.service || true
-  - curtin in-target --target=/target -- mkdir -p /etc/netplan
-  - curtin in-target --target=/target -- bash -c 'cat >/etc/netplan/01-netcfg.yaml <<NET\n$(sed -e 's/\\/\\\\/g' autoinstall/netplan/01-netcfg.yaml)\nNET'
-    - curtin in-target --target=/target -- bash -c '
-        cat >/etc/grub.d/40_custom <<GRUBEOF\n\
-        set default="0"\n\
-        set timeout=5\n\
-        if [ -s /boot/grub/grubenv ]; then\n\
-          load_env\n\
-        fi\n\
-        menuentry "Ubuntu (rootA)" {\n\
-          linux /boot/vmlinuz root=PARTLABEL=rootA ro\n\
-          initrd /boot/initrd.img\n\
-        }\n\
-        menuentry "Ubuntu (rootB)" {\n\
-          linux /boot/vmlinuz root=PARTLABEL=rootB ro\n\
-          initrd /boot/initrd.img\n\
-        }\n\
-        GRUBEOF\n'
-    - curtin in-target --target=/target -- update-grub
+  - mkdir -p /target/etc/netplan
+  - cp /cdrom/autoinstall/netplan/01-netcfg.yaml /target/etc/netplan/01-netcfg.yaml
+  - curtin in-target --target=/target -- update-grub || true
     - curtin in-target --target=/target -- systemctl enable ssh || true
 EOF
 

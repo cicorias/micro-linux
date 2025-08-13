@@ -1,0 +1,15 @@
+# Build artifacts and transient outputs
+artifacts/
+
+# Autoinstall per-build files (do not commit)
+autoinstall/user-data
+autoinstall/meta-data
+autoinstall/netplan/01-netcfg.yaml
+
+# Common local/editor noise
+*.swp
+*.swo
+.DS_Store
+.vscode/
+.idea/
+artifacts/

@@ -142,6 +142,14 @@ Run the scripts in order (root required for image steps). Start with the build h
 sudo ./scripts/00-setup-build-host.sh
 sudo ./scripts/01-rootfs.sh
 sudo NET_MODE=dhcp ./scripts/02-seed.sh   # or NET_MODE=static IFACE=eth0 ADDR=192.168.1.10 PREFIX=24 GATEWAY=192.168.1.1 ./scripts/02-seed.sh
+sudo SOURCE_ISO=/path/to/ubuntu-24.04-live-server-amd64.iso ./scripts/03-image.sh   # Use the Server Live ISO, not Desktop
+sudo SIZE_GB=8 ./scripts/03b-image-qcow2.sh
+```
+
+Then proceed with autoinstall seed and image creation (quick reference):
+
+```bash
+sudo NET_MODE=dhcp ./scripts/02-seed.sh
 sudo SOURCE_ISO=/path/to/ubuntu-24.04-live-server-amd64.iso ./scripts/03-image.sh
 sudo SIZE_GB=8 ./scripts/03b-image-qcow2.sh
 ```

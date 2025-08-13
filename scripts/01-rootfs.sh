@@ -13,7 +13,7 @@ mkdir -p artifacts
 
 # Minimal rootfs for installed system (qcow2 requires kernel + GRUB). Keep package set small.
 mmdebstrap --variant=minbase \
-  --include=systemd-sysv,openssh-server,linux-image-generic,grub-pc,grub-efi-amd64,ca-certificates,netplan.io \
+  --include=systemd-sysv,openssh-server,linux-image-generic,ca-certificates,netplan.io \
   noble artifacts/rootfs http://archive.ubuntu.com/ubuntu
 
 # Optional trims could be added here (locales/docs); left as TODO to keep script explicit.

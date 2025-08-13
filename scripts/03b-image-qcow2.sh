@@ -35,7 +35,7 @@ ROOTB_PART=${TMPNBD}p3
 DATA_PART=${TMPNBD}p4
 
 echo "Formatting filesystems"
-mkfs.vfat -F32 -n esp "$ESP_PART"
+mkfs.vfat -F32 -n ESP "$ESP_PART"
 mkfs.ext4 -F -L rootA "$ROOTA_PART"
 mkfs.ext4 -F -L rootB "$ROOTB_PART"
 mkfs.ext4 -F -L data "$DATA_PART"
@@ -54,15 +54,14 @@ cat > "$MNT/etc/fstab" <<EOF
 # /etc/fstab
 LABEL=rootA  /          ext4  defaults  0 1
 LABEL=data   /data      ext4  defaults  0 2
-LABEL=esp    /boot/efi  vfat  umask=0077  0 1
+LABEL=ESP    /boot/efi  vfat  umask=0077  0 1
 EOF
 
-echo "Installing GRUB (BIOS/UEFI)"
+echo "Installing GRUB (UEFI only)"
 mount --bind /dev "$MNT/dev"
 mount --bind /proc "$MNT/proc"
 mount --bind /sys "$MNT/sys"
-chroot "$MNT" bash -c "grub-install --target=i386-pc ${TMPNBD} || true"
-chroot "$MNT" bash -c "grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=ubuntu --recheck || true"
+chroot "$MNT" bash -c "grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=ubuntu --recheck"
 
 echo "GRUB configuration and boot entries"
 cat > "$MNT/etc/grub.d/40_custom" <<'GRUBEOF'
