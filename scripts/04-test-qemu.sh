@@ -80,27 +80,31 @@ if [[ -f "$INSTALL_TARGET" ]]; then
   echo "Generated qcow2 exists; using separate install target: $INSTALL_TARGET"
 fi
 
-# if [[ -f "$ISO" ]]; then
-#   echo "Launching QEMU with ISO (install to $INSTALL_TARGET)"
-#   # Create target disk if missing (8G default)
-#   if [[ ! -f "$INSTALL_TARGET" ]]; then
-#     qemu-img create -f qcow2 "$INSTALL_TARGET" 8G >/dev/null
-#   fi
-#   qemu-system-x86_64 "${ACCEL[@]}" -cpu "${CPU_ARG}" -m 1024 \
-#     "${UEFI_ARGS[@]}" \
-#     -cdrom "$ISO" \
-#     -drive file="$INSTALL_TARGET",if=virtio,format=qcow2 \
-#     -boot d -serial mon:stdio -display none || true
-# else
-#   echo "ISO not found at $ISO" >&2
-# fi
+if [[ -f "$ISO" ]]; then
+  echo "Launching QEMU with ISO (install to $INSTALL_TARGET)"
+  # Create target disk if missing (8G default)
+  if [[ ! -f "$INSTALL_TARGET" ]]; then
+    qemu-img create -f qcow2 "$INSTALL_TARGET" 8G >/dev/null
+  fi
+  # Use explicit device wiring with bootindex to guide UEFI
+  qemu-system-x86_64 "${ACCEL[@]}" -cpu "${CPU_ARG}" -m 1024 -machine q35 \
+    "${UEFI_ARGS[@]}" \
+    -drive if=none,media=cdrom,id=cd1,file="$ISO" \
+    -device ide-cd,drive=cd1,bootindex=1 \
+    -drive if=none,id=hd0,file="$INSTALL_TARGET",format=qcow2,discard=unmap \
+    -device virtio-blk-pci,drive=hd0,bootindex=2 \
+    -serial mon:stdio -display none -name micro-linux-iso || true
+else
+  echo "ISO not found at $ISO" >&2
+fi
 
 if [[ -f "$QCOW2" ]]; then
   echo "Launching QEMU booting qcow2 directly ($QCOW2)"
-  qemu-system-x86_64 "${ACCEL[@]}" -cpu "${CPU_ARG}" -m 1024 \
+  qemu-system-x86_64 "${ACCEL[@]}" -cpu "${CPU_ARG}" -m 1024 -machine q35 \
     "${UEFI_ARGS[@]}" \
-    -drive file="$QCOW2",if=virtio,format=qcow2 \
-    -serial mon:stdio -display none || true
+    -drive if=none,id=hd0,file="$QCOW2",format=qcow2,discard=unmap \
+    -device virtio-blk-pci,drive=hd0,bootindex=1 \
+    -serial mon:stdio -display none -name micro-linux-qcow2 || true
 else
   echo "QCOW2 not found at $QCOW2" >&2
 fi
