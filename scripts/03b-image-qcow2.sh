@@ -132,8 +132,14 @@ mount --bind /dev/pts "$MNT/dev/pts" || true
 # Ensure networking for apt inside chroot (resolv.conf already written)
 
 # Install minimal GRUB for UEFI in the target
+SECURE_BOOT=${SECURE_BOOT:-0}
 chroot "$MNT" bash -c 'export DEBIAN_FRONTEND=noninteractive; apt-get update'
-chroot "$MNT" bash -c 'export DEBIAN_FRONTEND=noninteractive; apt-get install -y --no-install-recommends grub-efi-amd64 grub-efi-amd64-bin grub-common grub2-common shim-signed'
+# Keep installs lean; avoid pulling linux-firmware and extras
+if [[ "$SECURE_BOOT" == "1" ]]; then
+  chroot "$MNT" bash -c 'export DEBIAN_FRONTEND=noninteractive; apt-get install -y --no-install-recommends grub-efi-amd64 grub-efi-amd64-bin grub-common grub2-common shim-signed'
+else
+  chroot "$MNT" bash -c 'export DEBIAN_FRONTEND=noninteractive; apt-get install -y --no-install-recommends grub-efi-amd64 grub-efi-amd64-bin grub-common grub2-common'
+fi
 
 # Install GRUB to the ESP and add a removable-media fallback
 chroot "$MNT" bash -c "grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=ubuntu --recheck"
@@ -143,6 +149,12 @@ echo "Finalizing GRUB configuration"
 chroot "$MNT" grub-editenv /boot/grub/grubenv create || true
 # Ensure initramfs and grub.cfg are present
 chroot "$MNT" bash -c 'export DEBIAN_FRONTEND=noninteractive; apt-get install -y --no-install-recommends initramfs-tools || true'
+# Prefer smaller compression for initramfs (xz is smallest, zstd is faster). Override with INITRAMFS_COMPRESS.
+INITRAMFS_COMPRESS=${INITRAMFS_COMPRESS:-xz}
+mkdir -p "$MNT/etc/initramfs-tools" && cat > "$MNT/etc/initramfs-tools/initramfs.conf" <<EOF
+MODULES=dep
+COMPRESS=${INITRAMFS_COMPRESS}
+EOF
 mkdir -p "$MNT/etc/initramfs-tools" && cat > "$MNT/etc/initramfs-tools/modules" <<'EOF'
 nvme
 virtio
@@ -171,6 +183,31 @@ chmod +x "$MNT/etc/grub.d/06_abroot"
 KVER=$(chroot "$MNT" bash -lc 'ls -1 /lib/modules | head -n1')
 chroot "$MNT" bash -c "update-initramfs -c -k ${KVER} || true"
 chroot "$MNT" update-grub || true
+
+# Optional: remove linux-firmware package and/or prune files (enable via PRUNE_FIRMWARE=1)
+if [[ "${PRUNE_FIRMWARE:-0}" == "1" ]]; then
+  echo "Purging linux-firmware package if present"
+  chroot "$MNT" bash -lc 'apt-get purge -y linux-firmware || true; apt-get autoremove -y || true'
+  echo "Pruning firmware set to virt essentials"
+  FW_DIR="$MNT/usr/lib/firmware"
+  # Keep these families commonly used in VMs and basic NICs/storage
+  KEEP=("virtio" "e100" "e1000" "rtl_nic" "rtl8168*" "r8169" "bnx2" "bnx2x" "tg3" "ixgbe" "i915" "ast" "cirrus" "amdgpu" "radeon" "qed" "qla2xxx" "mellanox" "mlx*" "iwlwifi")
+  if [[ -d "$FW_DIR" ]]; then
+    # Move keepers to temp, delete rest, move back
+    TMP_KEEP="$MNT/tmp/fw.keep"
+    mkdir -p "$TMP_KEEP"
+    for pat in "${KEEP[@]}"; do
+      find "$FW_DIR" -maxdepth 1 -type d -name "$pat*" -exec cp -a {} "$TMP_KEEP/" \; 2>/dev/null || true
+      find "$FW_DIR" -type f -name "$pat*" -exec cp --parents -a {} "$TMP_KEEP/" \; 2>/dev/null || true
+    done
+    rm -rf "$FW_DIR"/*
+    cp -a "$TMP_KEEP"/* "$FW_DIR"/ 2>/dev/null || true
+    rm -rf "$TMP_KEEP"
+  fi
+fi
+
+# Trim apt caches to save space
+chroot "$MNT" bash -lc 'apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*.deb 2>/dev/null || true'
 
 echo "Enable SSH and boot-success service if present"
 chroot "$MNT" systemctl enable ssh || true
