@@ -72,6 +72,12 @@ autoinstall:
         ptable: gpt
         wipe: superblock-recursive
         grub_device: true
+      - id: bios_grub
+        type: partition
+        device: disk0
+        size: 1M
+        flag: bios_grub
+        name: bios_grub
       - id: esp
         type: partition
         device: disk0
@@ -95,7 +101,7 @@ autoinstall:
         name: data
       - id: fs_esp
         type: format
-        fstype: vfat
+        fstype: fat32
         volume: esp
       - id: fs_rootA
         type: format
@@ -118,7 +124,12 @@ autoinstall:
         path: /
         device: fs_rootA
   late-commands:
-  - curtin in-target --target=/target -- grub-install --recheck || true
+  - |
+    if [ -d /sys/firmware/efi ]; then
+      curtin in-target --target=/target -- grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=ubuntu --recheck || true
+    else
+      curtin in-target --target=/target -- grub-install --recheck || true
+    fi
   - curtin in-target --target=/target -- grub-mkconfig -o /boot/grub/grub.cfg || true
   - curtin in-target --target=/target -- grub-editenv /boot/grub/grubenv create || true
   - mkdir -p /target/etc/systemd/system
@@ -127,7 +138,7 @@ autoinstall:
   - mkdir -p /target/etc/netplan
   - cp /cdrom/autoinstall/netplan/01-netcfg.yaml /target/etc/netplan/01-netcfg.yaml
   - curtin in-target --target=/target -- update-grub || true
-    - curtin in-target --target=/target -- systemctl enable ssh || true
+  - curtin in-target --target=/target -- systemctl enable ssh || true
 EOF
 
 echo "Autoinstall seed written to autoinstall/user-data and autoinstall/meta-data"

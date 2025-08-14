@@ -66,6 +66,8 @@ if [[ -f "$MNT/isolinux/txt.cfg" ]]; then
 fi
 
 echo "Rebuilding ISO by replaying boot metadata from source (minimal changes)"
+# Ensure we don't append to an existing ISO; xorriso refuses when outdev already contains data
+rm -f "$ISO_OUT"
 xorriso -indev "$SOURCE_ISO" -outdev "$ISO_OUT" \
   -map "$STAGE/autoinstall" /autoinstall \
   -map "$PATCHED_GRUB" /boot/grub/grub.cfg \
