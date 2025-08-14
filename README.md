@@ -134,6 +134,10 @@ qemu-system-x86_64 -enable-kvm -cpu host -m 1024 \
   -serial mon:stdio -display none
 ```
 
+## Using the image
+
+For using on Bare Metal see document [using image](./doc/using-image.md)
+
 ## Building artifacts
 
 Run the scripts in order (root required for image steps). Start with the build host setup to install required packages and UEFI support. For the installer ISO remaster, provide the official Ubuntu 24.04 installer ISO via SOURCE_ISO:
