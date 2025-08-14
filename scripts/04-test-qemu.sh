@@ -153,12 +153,20 @@ case "$MODE" in
     fi
     if [[ -f "$ISO" ]]; then
       echo "Mode: ISO install → target $INSTALL_TARGET"
-      # Create target disk if missing (8G default)
+      # Create target disk if missing (default 24G to fit A/B layout)
+      INSTALL_SIZE_GB=${INSTALL_SIZE_GB:-24}
       if [[ ! -f "$INSTALL_TARGET" ]]; then
-        qemu-img create -f qcow2 "$INSTALL_TARGET" 8G >/dev/null
+        qemu-img create -f qcow2 "$INSTALL_TARGET" ${INSTALL_SIZE_GB}G >/dev/null
+      fi
+      # If an existing disk is smaller than 20G, warn loudly
+      if [[ -f "$INSTALL_TARGET" ]]; then
+        SIZE_BYTES=$(qemu-img info --output=json "$INSTALL_TARGET" | sed -n 's/.*\"virtual-size\": *\([0-9]*\).*/\1/p')
+        if [[ -n "$SIZE_BYTES" && "$SIZE_BYTES" -lt $((20*1024*1024*1024)) ]]; then
+          echo "WARNING: $INSTALL_TARGET virtual size is <20G; the A/B layout may fail under UEFI." >&2
+        fi
       fi
       # Use explicit device wiring with bootindex to guide UEFI
-      qemu-system-x86_64 "${ACCEL[@]}" -cpu "${CPU_ARG}" -m 1024 -machine q35 \
+  qemu-system-x86_64 "${ACCEL[@]}" -cpu "${CPU_ARG}" -m 1536 -machine q35 \
         "${UEFI_ARGS[@]}" \
         "${NIC_ARGS[@]}" \
         -drive if=none,media=cdrom,id=cd1,file="$ISO" \
@@ -174,7 +182,7 @@ case "$MODE" in
   qcow2)
     if [[ -f "$QCOW2" ]]; then
       echo "Mode: qcow2 direct boot → $QCOW2"
-      qemu-system-x86_64 "${ACCEL[@]}" -cpu "${CPU_ARG}" -m 1024 -machine q35 \
+  qemu-system-x86_64 "${ACCEL[@]}" -cpu "${CPU_ARG}" -m 1024 -machine q35 \
         "${UEFI_ARGS[@]}" \
         "${NIC_ARGS[@]}" \
         -drive if=none,id=hd0,file="$QCOW2",format=qcow2,discard=unmap \
@@ -191,4 +199,4 @@ case "$MODE" in
     exit 2
     ;;
 esac
-fi
+

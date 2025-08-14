@@ -1,0 +1,29 @@
+#cloud-config
+autoinstall:
+  version: 1
+  identity:
+    hostname: micro
+    username: ubuntu
+    password: __PASSWORD_HASH__
+  ssh:
+    install-server: true
+    allow-pw: true
+  apt:
+    preserve_sources_list: false
+    primary:
+      - arches: [amd64]
+        uri: http://archive.ubuntu.com/ubuntu
+    security:
+      - arches: [amd64]
+        uri: http://security.ubuntu.com/ubuntu
+  storage:
+    layout:
+      name: direct
+      match:
+        size: largest
+    swap: 0
+  late-commands:
+    - curtin in-target --target=/target -- bash -lc 'echo "ubuntu:__PASSWORD_HASH__" | chpasswd -e || true'
+    - mkdir -p /target/etc/netplan
+    - cp /cdrom/autoinstall/netplan/01-netcfg.yaml /target/etc/netplan/01-netcfg.yaml
+    - curtin in-target --target=/target -- systemctl enable ssh || true

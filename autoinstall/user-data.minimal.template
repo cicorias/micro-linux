@@ -1,0 +1,64 @@
+#cloud-config
+autoinstall:
+  version: 1
+  identity:
+    hostname: micro
+    username: ubuntu
+    password: __PASSWORD_HASH__
+  ssh:
+    install-server: true
+    allow-pw: true
+  storage:
+    version: 1
+    config:
+      - id: disk0
+        type: disk
+        match:
+          size: largest
+        ptable: gpt
+        wipe: superblock-recursive
+        grub_device: true
+      - id: esp
+        type: partition
+        device: disk0
+        size: 512M
+        flag: boot
+        name: esp
+      - id: root
+        type: partition
+        device: disk0
+        size: -1
+        name: root
+      - id: fs_esp
+        type: format
+        fstype: vfat
+        volume: esp
+      - id: fs_root
+        type: format
+        fstype: ext4
+        volume: root
+      - id: mnt_esp
+        type: mount
+        path: /boot/efi
+        device: fs_esp
+      - id: mnt_root
+        type: mount
+        path: /
+        device: fs_root
+  late-commands:
+    - curtin in-target --target=/target -- bash -lc 'echo "ubuntu:__PASSWORD_HASH__" | chpasswd -e || true'
+    - |
+        if [ -d /sys/firmware/efi ]; then
+          curtin in-target --target=/target -- grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=ubuntu --recheck || true
+        else
+          curtin in-target --target=/target -- grub-install --recheck || true
+        fi
+    - curtin in-target --target=/target -- grub-mkconfig -o /boot/grub/grub.cfg || true
+    - curtin in-target --target=/target -- grub-editenv /boot/grub/grubenv create || true
+    - mkdir -p /target/etc/systemd/system
+    - cp /cdrom/autoinstall/boot-success.service /target/etc/systemd/system/boot-success.service
+    - curtin in-target --target=/target -- systemctl enable boot-success.service || true
+    - mkdir -p /target/etc/netplan
+    - cp /cdrom/autoinstall/netplan/01-netcfg.yaml /target/etc/netplan/01-netcfg.yaml
+    - curtin in-target --target=/target -- update-grub || true
+    - curtin in-target --target=/target -- systemctl enable ssh || true

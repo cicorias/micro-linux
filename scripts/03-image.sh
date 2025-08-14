@@ -30,6 +30,7 @@ done
 
 mkdir -p artifacts
 ISO_OUT="artifacts/micro-linux-ubuntu-24.04.iso"
+VOLID=${VOLID:-MICRO_LINUX_24_04}
 
 STAGE=$(mktemp -d)
 MNT=$(mktemp -d)
@@ -69,6 +70,7 @@ echo "Rebuilding ISO by replaying boot metadata from source (minimal changes)"
 # Ensure we don't append to an existing ISO; xorriso refuses when outdev already contains data
 rm -f "$ISO_OUT"
 xorriso -indev "$SOURCE_ISO" -outdev "$ISO_OUT" \
+  -volid "$VOLID" \
   -map "$STAGE/autoinstall" /autoinstall \
   -map "$PATCHED_GRUB" /boot/grub/grub.cfg \
   $( [[ -f "$PATCHED_ISOLINUX" ]] && echo -map "$PATCHED_ISOLINUX" /isolinux/txt.cfg ) \

@@ -25,7 +25,8 @@ mmdebstrap --variant=minbase \
   --dpkgopt='path-exclude=/usr/share/info/*' \
   --dpkgopt='path-exclude=/usr/share/locale/*' \
   --dpkgopt='path-include=/usr/share/locale/en*' \
-  --include=systemd-sysv,apt,openssh-server,linux-image-virtual,ca-certificates,netplan.io,initramfs-tools \
+  --include=systemd-sysv,apt,openssh-server,linux-image-virtual,ca-certificates,netplan.io,initramfs-tools,\
+grub-efi-amd64,grub-efi-amd64-bin,grub2-common,efibootmgr,shim-signed \
   noble artifacts/rootfs http://archive.ubuntu.com/ubuntu
 
 # Optional trims (opt-in via env): remove docs/man/locales cache. Safe for most use-cases.
