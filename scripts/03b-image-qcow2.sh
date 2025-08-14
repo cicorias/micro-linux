@@ -75,7 +75,7 @@ cat > "$MNT/etc/default/grub" <<'EOF'
 GRUB_DEFAULT=rootA
 GRUB_TIMEOUT=5
 GRUB_DISTRIBUTOR=`lsb_release -i -s 2>/dev/null || echo Debian`
-GRUB_CMDLINE_LINUX="console=ttyS0,115200 console=tty0 rootdelay=3"
+GRUB_CMDLINE_LINUX="console=ttyS0,115200 console=tty0 rootdelay=3 ip=dhcp"
 GRUB_TERMINAL="serial console"
 GRUB_SERIAL_COMMAND="serial --speed=115200 --unit=0 --word=8 --parity=no --stop=1"
 EOF
@@ -148,7 +148,7 @@ chroot "$MNT" bash -c 'mkdir -p /boot/efi/EFI/BOOT; if [ -f /boot/efi/EFI/ubuntu
 echo "Finalizing GRUB configuration"
 chroot "$MNT" grub-editenv /boot/grub/grubenv create || true
 # Ensure initramfs and grub.cfg are present
-chroot "$MNT" bash -c 'export DEBIAN_FRONTEND=noninteractive; apt-get install -y --no-install-recommends initramfs-tools || true'
+chroot "$MNT" bash -c 'export DEBIAN_FRONTEND=noninteractive; apt-get install -y --no-install-recommends initramfs-tools open-iscsi || true'
 # Prefer smaller compression for initramfs (xz is smallest, zstd is faster). Override with INITRAMFS_COMPRESS.
 INITRAMFS_COMPRESS=${INITRAMFS_COMPRESS:-xz}
 mkdir -p "$MNT/etc/initramfs-tools" && cat > "$MNT/etc/initramfs-tools/initramfs.conf" <<EOF
@@ -161,6 +161,10 @@ virtio
 virtio_pci
 virtio_blk
 virtio_scsi
+# iSCSI root over SAN-boot (iBFT)
+scsi_transport_iscsi
+libiscsi
+iscsi_tcp
 EOF
 # Provide A/B menu entries that use labels so device names (nvme/vda/sda) don’t matter
 cat > "$MNT/etc/grub.d/06_abroot" <<'GRUBD'
@@ -169,12 +173,12 @@ set -e
 cat <<'EOF'
 menuentry 'Ubuntu (rootA)' --id rootA {
   search --no-floppy --set=root --label rootA
-  linux /boot/vmlinuz root=LABEL=rootA ro console=ttyS0,115200 console=tty0 rootdelay=3
+  linux /boot/vmlinuz root=LABEL=rootA ro console=ttyS0,115200 console=tty0 rootdelay=3 ip=dhcp
   initrd /boot/initrd.img
 }
 menuentry 'Ubuntu (rootB)' --id rootB {
   search --no-floppy --set=root --label rootB
-  linux /boot/vmlinuz root=LABEL=rootB ro console=ttyS0,115200 console=tty0 rootdelay=3
+  linux /boot/vmlinuz root=LABEL=rootB ro console=ttyS0,115200 console=tty0 rootdelay=3 ip=dhcp
   initrd /boot/initrd.img
 }
 EOF
